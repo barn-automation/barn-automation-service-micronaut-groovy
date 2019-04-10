@@ -1,6 +1,6 @@
 package codes.recursive.service.streaming
 
-import codes.recursive.event.EventEmitter
+import codes.recursive.event.BarnEventBus
 import codes.recursive.model.BarnEvent
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
@@ -33,8 +33,8 @@ class CameraConsumerService {
     StreamClient client
     private final AtomicBoolean closed = new AtomicBoolean(false)
 
-    @Inject private EventEmitter eventEmitter
     @Inject private OracleDataService oracleDataService
+    @Inject BarnEventBus barnEventBus
 
     CameraConsumerService(
             @Property(name="codes.recursive.oracle.oci-config-path") String configFilePath,
@@ -42,8 +42,8 @@ class CameraConsumerService {
     ) {
         this.configFilePath = configFilePath
         this.streamId = streamId
-        def provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
-        def client = new StreamClient(provider)
+        ConfigFileAuthenticationDetailsProvider provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
+        StreamClient client = new StreamClient(provider)
         client.setRegion('us-phoenix-1')
         this.client = client
     }
@@ -76,9 +76,8 @@ class CameraConsumerService {
                     def slurper = new JsonSlurper()
                     msg = slurper.parseText( new String(record.value, "UTF-8") ) as Map
                     logger.info "Received: ${JsonOutput.toJson(msg)}"
-                    BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
                     BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
-                    eventEmitter.emit('cameraMessage', [barnEvent: evt, barnSseEvent: sseEvent, timestamp: record.timestamp])
+                    barnEventBus.send(sseEvent)
                 }
                 catch (JsonException e) {
                     logger.warn("Error parsing JSON from ${record.value}")

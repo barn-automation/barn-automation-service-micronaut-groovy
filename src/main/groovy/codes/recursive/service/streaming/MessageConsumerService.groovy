@@ -1,6 +1,6 @@
 package codes.recursive.service.streaming
 
-import codes.recursive.event.EventEmitter
+import codes.recursive.event.BarnEventBus
 import codes.recursive.model.BarnEvent
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
@@ -33,22 +33,22 @@ class MessageConsumerService {
     String streamId
     String groupName = 'group-0'
     StreamClient client
-    EventEmitter eventEmitter
     OracleDataService oracleDataService
+    BarnEventBus barnEventBus
 
     @Inject
     MessageConsumerService(
-            EventEmitter eventEmitter,
             OracleDataService oracleDataService,
+            BarnEventBus barnEventBus,
             @Property(name="codes.recursive.oracle.oci-config-path") String configFilePath,
             @Property(name="codes.recursive.oracle.streaming.outgoing-stream-id") String streamId
     ) {
-        this.eventEmitter = eventEmitter
         this.oracleDataService = oracleDataService
+        this.barnEventBus = barnEventBus
         this.configFilePath = configFilePath
         this.streamId = streamId
-        def provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
-        def client = new StreamClient(provider)
+        ConfigFileAuthenticationDetailsProvider provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
+        StreamClient client = new StreamClient(provider)
         client.setRegion('us-phoenix-1')
         this.client = client
     }
@@ -87,7 +87,7 @@ class MessageConsumerService {
                     BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
                     BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
                     if( evt.type != ArduinoMessage.CAMERA_0 ) {
-                        eventEmitter.emit('incomingMessage', [barnEvent: evt, barnSseEvent: sseEvent, timestamp: record.timestamp])
+                        barnEventBus.send(sseEvent)
                     }
                     oracleDataService.save(evt)
                 }

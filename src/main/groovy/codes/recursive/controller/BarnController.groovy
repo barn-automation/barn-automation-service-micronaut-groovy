@@ -1,6 +1,6 @@
 package codes.recursive.controller
 
-import codes.recursive.event.EventEmitter
+import codes.recursive.event.BarnEventBus
 import codes.recursive.event.InitialEventState
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
@@ -8,12 +8,16 @@ import codes.recursive.service.streaming.MessageProducerService
 import codes.recursive.util.ArduinoMessage
 import groovy.json.JsonOutput
 import groovy.transform.CompileStatic
+import io.micronaut.http.HttpHeaders
+import io.micronaut.http.HttpRequest
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.sse.Event
 import io.reactivex.Emitter
 import io.reactivex.Flowable
+import io.reactivex.functions.Action
 import io.reactivex.functions.BiConsumer
+import io.reactivex.functions.Consumer
 import org.reactivestreams.Publisher
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -28,13 +32,13 @@ class BarnController {
 
     OracleDataService oracleDataService
     MessageProducerService messageProducerService
-    EventEmitter eventEmitter
+    BarnEventBus barnEventBus
 
     @Inject
-    BarnController(OracleDataService oracleDataService, MessageProducerService messageProducerService, EventEmitter eventEmitter){
+    BarnController(OracleDataService oracleDataService, MessageProducerService messageProducerService, BarnEventBus barnEventBus){
         this.oracleDataService = oracleDataService
         this.messageProducerService = messageProducerService
-        this.eventEmitter = eventEmitter
+        this.barnEventBus = barnEventBus
     }
 
     @Get("/")
@@ -103,25 +107,27 @@ class BarnController {
     @Get("/stream")
     Publisher<Event<BarnSseEvent>> stream() {
         InitialEventState initialEventState = new InitialEventState()
-
-        final AtomicBoolean hasIncomingListener = new AtomicBoolean(false)
-        final AtomicBoolean hasCameraListener = new AtomicBoolean(false)
-
+        final AtomicBoolean hasListener = new AtomicBoolean(false)
         BiConsumer generator = { BarnSseEvent i, Emitter emitter ->
-            def messageHandler = { Map evt ->
-                emitter.onNext( Event.of(evt?.barnSseEvent as BarnSseEvent) )
-                return true
-            }
-            if( !hasIncomingListener.get() ) {
-                eventEmitter.addListener('incomingMessage', messageHandler)
-                hasIncomingListener.set(true)
-            }
-            if( !hasCameraListener.get() ) {
-                eventEmitter.addListener('cameraMessage', messageHandler)
-                hasCameraListener.set(true)
+            if( !hasListener.get() ) {
+                barnEventBus
+                    .toObservable()
+                    .subscribe( new Consumer<Object>() {
+                        @Override
+                        void accept(Object o) throws Exception {
+                            if( o instanceof BarnSseEvent ) {
+                                try {
+                                    emitter.onNext( Event.of(o) )
+                                }
+                                catch(IllegalStateException ex) {
+                                    emitter.onComplete()
+                                }
+                            }
+                        }
+                    })
+                hasListener.set(true)
             }
         } as BiConsumer
-
         return Flowable.generate( initialEventState, generator )
     }
 }
