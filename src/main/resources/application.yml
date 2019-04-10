@@ -1,0 +1,6 @@
+micronaut:
+    application:
+        name: barn-automation-service-micronaut-groovy
+    server:
+        cors:
+            enabled: true
