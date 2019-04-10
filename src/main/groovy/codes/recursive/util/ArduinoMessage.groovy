@@ -1,5 +1,8 @@
 package codes.recursive.util
 
+import groovy.transform.CompileStatic
+
+@CompileStatic
 class ArduinoMessage {
 
     public static int ARDUINO_MOTOR_O = 0
@@ -32,11 +35,6 @@ class ArduinoMessage {
 
     int type
     String message
-
-    ArduinoMessage(type, message) {
-        this.type = type
-        this.message = message
-    }
 
     @Override
     String toString() {

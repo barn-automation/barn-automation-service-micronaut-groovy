@@ -5,6 +5,7 @@ import codes.recursive.event.InitialEventState
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import codes.recursive.service.streaming.MessageProducerService
+import codes.recursive.util.ArduinoMessage
 import groovy.json.JsonOutput
 import groovy.transform.CompileStatic
 import io.micronaut.http.MediaType
@@ -91,7 +92,7 @@ class BarnController {
     @Post("/control")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    Map sendControlMessage(Map message) {
+    Map sendControlMessage(@Body ArduinoMessage message) {
         logger.info  "Received message: ${message}"
         messageProducerService.send(JsonOutput.toJson(message))
         return [
