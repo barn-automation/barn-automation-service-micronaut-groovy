@@ -90,7 +90,7 @@ class CameraConsumerService {
                 }
             }
             cursor = getResult.opcNextCursor
-            sleep(1000)
+            sleep(500)
         }
 
     }
