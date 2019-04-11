@@ -34,7 +34,7 @@ class ArduinoMessage {
     public static String OFF = 'OFF'
 
     int type
-    String message
+    int message
 
     @Override
     String toString() {
