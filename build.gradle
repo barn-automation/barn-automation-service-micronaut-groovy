@@ -39,8 +39,12 @@ configurations {
 }
 
 dependencies {
-    compile "org.codehaus.groovy:groovy-sql:2.5.6"
-    compile "org.codehaus.groovy:groovy-json:2.5.6"
+    compile group: 'javax.xml.bind', name: 'jaxb-api', version: '2.4.0-b180830.0359'
+    compile group: 'com.sun.xml.bind', name: 'jaxb-core', version: '2.3.0.1'
+    compile group: 'com.sun.xml.bind', name: 'jaxb-impl', version: '2.4.0-b180830.0438'
+    compile 'org.codehaus.groovy:groovy:3.0.0-alpha-4'
+    compile "org.codehaus.groovy:groovy-sql:3.0.0-alpha-4"
+    compile "org.codehaus.groovy:groovy-json:3.0.0-alpha-4"
     compile "io.micronaut:micronaut-http-client"
     compile "io.micronaut:micronaut-http-server-netty"
     compile "io.micronaut:micronaut-runtime-groovy"
