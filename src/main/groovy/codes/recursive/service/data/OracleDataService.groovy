@@ -6,6 +6,7 @@ import groovy.sql.GroovyRowResult
 import groovy.sql.Sql
 import groovy.transform.CompileStatic
 import io.micronaut.context.annotation.Property
+import oracle.jdbc.pool.OracleConnectionPoolDataSource
 import oracle.sql.TIMESTAMP
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -21,7 +22,9 @@ class OracleDataService {
     String oracleUrl
     String oracleUser
     String oraclePassword
-    Sql sql
+    OracleConnectionPoolDataSource dataSource
+    Sql defaultConnection
+
     static final Logger logger = LoggerFactory.getLogger(OracleDataService.class)
 
     OracleDataService(
@@ -32,18 +35,20 @@ class OracleDataService {
         this.oracleUrl = url
         this.oracleUser = user
         this.oraclePassword = password
-        this.sql = getSql()
-        //Logger.getLogger('groovy.sql').level = Level.FINE
+        this.dataSource = new OracleConnectionPoolDataSource()
+        this.dataSource.user = this.oracleUser
+        this.dataSource.password = this.oraclePassword
+        this.dataSource.setURL(this.oracleUrl)
+        this.defaultConnection = getDefaultConnection()
     }
 
-    Sql getSql() throws SQLException {
-        def db = [url: this.oracleUrl, user: this.oracleUser, password: this.oraclePassword, driver: 'oracle.jdbc.driver.OracleDriver']
-        Sql sql = Sql.newInstance( db.url, db.user, db.password, db.driver )
-        return sql
+    Sql getDefaultConnection() throws SQLException {
+        Sql connection = Sql.newInstance( this.dataSource )
+        return connection
     }
 
     def test() {
-        GroovyRowResult result = sql.firstRow("select * from barn.barn_event fetch first 1 rows only")
+        GroovyRowResult result = defaultConnection.firstRow("select * from barn.barn_event fetch first 1 rows only")
         JsonSlurper slurper = new JsonSlurper()
         return [
                 id: result['ID'],
@@ -56,23 +61,25 @@ class OracleDataService {
     def save(BarnEvent barnEvent) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
         List<Object> params = [barnEvent.type, barnEvent.data, simpleDateFormat.format(barnEvent.capturedAt)] as List<Object>
-        sql.execute("""
+        Sql connection = Sql.newInstance( this.dataSource )
+        connection.execute("""
           insert into BARN.BARN_EVENT (TYPE, DATA, CAPTURED_AT) values (?, ?, to_timestamp(?, 'yyyy-mm-dd HH24:mi:ss'))
         """, params)
+        connection.close()
     }
 
     int countEvents() {
-        return sql.firstRow("select count(1) as NUM from BARN_EVENT")?.NUM as int ?: 0
+        return defaultConnection.firstRow("select count(1) as NUM from BARN_EVENT")?.NUM as int ?: 0
     }
 
     int countEventsByEventType(String type) {
-        return sql.firstRow("select count(1) as NUM from BARN_EVENT where TYPE = ?", [type] as List<Object>)?.NUM as int ?: 0
+        return defaultConnection.firstRow("select count(1) as NUM from BARN_EVENT where TYPE = ?", [type] as List<Object>)?.NUM as int ?: 0
     }
 
     List listEventsByEventType(String type, int offset=0, int max=50) {
         List<Object> events = []
         JsonSlurper slurper = new JsonSlurper()
-        sql.eachRow("select * from BARN_EVENT where TYPE = ?", [type] as List<Object>, offset, max) {
+        defaultConnection.eachRow("select * from BARN_EVENT where TYPE = ?", [type] as List<Object>, offset, max) {
             events << [
                     id: it['ID'],
                     type: it['TYPE'],
@@ -86,7 +93,7 @@ class OracleDataService {
     List listEvents(int offset=0, int max=50) {
         List events = []
         JsonSlurper slurper = new JsonSlurper()
-        sql.eachRow("select * from BARN_EVENT", offset, max) {
+        defaultConnection.eachRow("select * from BARN_EVENT", offset, max) {
             events << [
                     id: it['ID'],
                     type: it['TYPE'],
@@ -99,7 +106,7 @@ class OracleDataService {
 
     void close() {
         logger.info "Closing SQL connection..."
-        this.sql.close()
+        this.defaultConnection.close()
         logger.info "Closed SQL connection..."
     }
 }

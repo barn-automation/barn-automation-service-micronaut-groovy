@@ -1,7 +1,6 @@
 package codes.recursive.service.streaming
 
 import codes.recursive.event.BarnEventBus
-import codes.recursive.model.BarnEvent
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider
