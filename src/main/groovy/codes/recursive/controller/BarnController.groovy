@@ -8,14 +8,13 @@ import codes.recursive.service.streaming.MessageProducerService
 import codes.recursive.util.ArduinoMessage
 import groovy.json.JsonOutput
 import groovy.transform.CompileStatic
-import io.micronaut.http.HttpHeaders
-import io.micronaut.http.HttpRequest
+import groovy.transform.TypeCheckingMode
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.sse.Event
 import io.reactivex.Emitter
 import io.reactivex.Flowable
-import io.reactivex.functions.Action
+import io.reactivex.disposables.Disposable
 import io.reactivex.functions.BiConsumer
 import io.reactivex.functions.Consumer
 import org.reactivestreams.Publisher
@@ -25,7 +24,7 @@ import org.slf4j.LoggerFactory
 import javax.inject.Inject
 import java.util.concurrent.atomic.AtomicBoolean
 
-@CompileStatic
+@CompileStatic(TypeCheckingMode.SKIP)
 @Controller("/barn")
 class BarnController {
     static final Logger logger = LoggerFactory.getLogger(BarnController.class)
@@ -108,16 +107,23 @@ class BarnController {
     Publisher<Event<BarnSseEvent>> stream() {
         InitialEventState initialEventState = new InitialEventState()
         final AtomicBoolean hasListener = new AtomicBoolean(false)
+        Disposable subscription
         BiConsumer generator = { BarnSseEvent i, Emitter emitter ->
             if( !hasListener.get() ) {
-                barnEventBus
+                subscription = barnEventBus
                     .toObservable()
                     .subscribe( new Consumer<Object>() {
                         @Override
-                        void accept(Object o) throws Exception {
+                        void accept(Object o) throws Exception, IllegalStateException {
                             if( o instanceof BarnSseEvent ) {
                                 try {
-                                    emitter.onNext( Event.of(o) )
+                                    if( !emitter.cancelled ) {
+                                        emitter.onNext( Event.of(o) )
+                                    }
+                                    else {
+                                        emitter.onComplete()
+                                        subscription.dispose()
+                                    }
                                 }
                                 catch(IllegalStateException ex) {
                                     emitter.onComplete()
