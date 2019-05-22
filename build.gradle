@@ -49,6 +49,9 @@ dependencies {
     compile "io.micronaut:micronaut-http-server-netty"
     compile "io.micronaut:micronaut-runtime-groovy"
     compile "io.micronaut:micronaut-validation"
+
+    compile group: 'com.oracle.oci.sdk', name: 'oci-java-sdk-full', version: '1.5.4'
+
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     compileOnly "io.micronaut:micronaut-inject-groovy"
     runtime "ch.qos.logback:logback-classic:1.2.3"
