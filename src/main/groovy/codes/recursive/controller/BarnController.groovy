@@ -47,7 +47,6 @@ class BarnController {
                 health: 'OK',
                 streamSource: 'OCI',
                 at: new Date(),
-                test: oracleDataService.test(),
         ]
     }
 
@@ -107,26 +106,27 @@ class BarnController {
     Publisher<Event<BarnSseEvent>> stream() {
         InitialEventState initialEventState = new InitialEventState()
         final AtomicBoolean hasListener = new AtomicBoolean(false)
-        Disposable subscription
-        BiConsumer generator = { BarnSseEvent i, Emitter emitter ->
+        Disposable eventBusSubscription
+        BiConsumer sseGenerator = { BarnSseEvent i, Emitter sseEmitter ->
             if( !hasListener.get() ) {
-                subscription = barnEventBus
+                eventBusSubscription = barnEventBus
                     .toObservable()
                     .subscribe( new Consumer<Object>() {
                         @Override
                         void accept(Object o) throws Exception, IllegalStateException {
                             if( o instanceof BarnSseEvent ) {
                                 try {
-                                    if( !emitter.cancelled ) {
-                                        emitter.onNext( Event.of(o) )
+                                    if( !sseEmitter.cancelled ) {
+                                        sseEmitter.onNext( Event.of(o) )
                                     }
                                     else {
-                                        emitter.onComplete()
-                                        subscription.dispose()
+                                        sseEmitter.onComplete()
+                                        eventBusSubscription.dispose()
                                     }
                                 }
                                 catch(IllegalStateException ex) {
-                                    emitter.onComplete()
+                                    sseEmitter.onComplete()
+                                    eventBusSubscription.dispose()
                                 }
                             }
                         }
@@ -134,6 +134,6 @@ class BarnController {
                 hasListener.set(true)
             }
         } as BiConsumer
-        return Flowable.generate( initialEventState, generator )
+        return Flowable.generate( initialEventState, sseGenerator )
     }
 }

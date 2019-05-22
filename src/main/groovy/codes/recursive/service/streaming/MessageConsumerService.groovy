@@ -6,11 +6,14 @@ import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import codes.recursive.util.ArduinoMessage
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider
+import com.oracle.bmc.model.BmcException
 import com.oracle.bmc.streaming.StreamClient
 import com.oracle.bmc.streaming.model.CreateGroupCursorDetails
 import com.oracle.bmc.streaming.model.Message
 import com.oracle.bmc.streaming.requests.CreateGroupCursorRequest
 import com.oracle.bmc.streaming.requests.GetMessagesRequest
+import com.oracle.bmc.streaming.responses.CreateGroupCursorResponse
+import com.oracle.bmc.streaming.responses.GetMessagesResponse
 import groovy.json.JsonException
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
@@ -57,50 +60,66 @@ class MessageConsumerService {
     void start() {
         logger.info("Creating cursor...")
 
-        def cursorDetails = CreateGroupCursorDetails.builder()
+        CreateGroupCursorDetails cursorDetails = CreateGroupCursorDetails.builder()
                 .type(CreateGroupCursorDetails.Type.TrimHorizon)
                 .commitOnGet(true)
                 .groupName(this.groupName)
                 .build()
-        def groupCursorRequest = CreateGroupCursorRequest.builder()
+        CreateGroupCursorRequest groupCursorRequest = CreateGroupCursorRequest.builder()
                 .streamId(streamId)
                 .createGroupCursorDetails(cursorDetails)
                 .build()
 
-        def cursorResponse = this.client.createGroupCursor(groupCursorRequest)
+        CreateGroupCursorResponse cursorResponse = this.client.createGroupCursor(groupCursorRequest)
         String cursor = cursorResponse.cursor.value
 
         logger.info("Cursor created...")
+
+        int failures = 0
 
         while(!closed.get()) {
             GetMessagesRequest getRequest = GetMessagesRequest.builder()
                     .cursor(cursor)
                     .streamId(this.streamId)
                     .build()
-            def getResult = this.client.getMessages(getRequest)
-            getResult.items.each { Message record ->
-                Map msg
-                try {
-                    def slurper = new JsonSlurper()
-                    msg = slurper.parseText( new String(record.value, "UTF-8") ) as Map
-                    logger.info "Received: ${JsonOutput.toJson(msg)}"
-                    BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
-                    BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
-                    if( evt.type != ArduinoMessage.CAMERA_0 ) {
-                        barnEventBus.send(sseEvent)
+            GetMessagesResponse getResult
+
+            try {
+                getResult = this.client.getMessages(getRequest)
+                getResult.items.each { Message record ->
+                    Map msg
+                    try {
+                        JsonSlurper slurper = new JsonSlurper()
+                        msg = slurper.parseText( new String(record.value, "UTF-8") ) as Map
+                        logger.info "Received: ${JsonOutput.toJson(msg)}"
+                        BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
+                        BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
+                        if( evt.type != ArduinoMessage.CAMERA_0 ) {
+                            barnEventBus.send(sseEvent)
+                        }
+                        oracleDataService.save(evt)
                     }
-                    oracleDataService.save(evt)
+                    catch (JsonException e) {
+                        logger.warn("Error parsing JSON from ${record.value}")
+                        e.printStackTrace()
+                    }
+                    catch (Exception e) {
+                        logger.warn("Error:")
+                        e.printStackTrace()
+                    }
                 }
-                catch (JsonException e) {
-                    logger.warn("Error parsing JSON from ${record.value}")
-                    e.printStackTrace()
+                cursor = getResult.opcNextCursor
+            }
+            catch(BmcException ex) {
+                failures++
+                if( failures > 9 ) {
+                    throw new Exception("MessageConsumerService has failed ${failures} times.  Giving up...")
                 }
-                catch (Exception e) {
-                    logger.warn("Error:")
-                    e.printStackTrace()
+                else {
+                    logger.info "MessageConsumerService call to getMessages() failed with: '${ex.message}'.  Waiting 1000ms to try again..."
+                    sleep(1000)
                 }
             }
-            cursor = getResult.opcNextCursor
             sleep(500)
         }
 

@@ -47,17 +47,6 @@ class OracleDataService {
         return connection
     }
 
-    def test() {
-        GroovyRowResult result = defaultConnection.firstRow("select * from barn.barn_event fetch first 1 rows only")
-        JsonSlurper slurper = new JsonSlurper()
-        return [
-                id: result['ID'],
-                capturedAt: (result['CAPTURED_AT'] as TIMESTAMP).stringValue(),
-                type: result['TYPE'],
-                data: slurper.parseText((result['DATA'] as Clob)?.asciiStream?.text ),
-        ]
-    }
-
     def save(BarnEvent barnEvent) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
         List<Object> params = [barnEvent.type, barnEvent.data, simpleDateFormat.format(barnEvent.capturedAt)] as List<Object>

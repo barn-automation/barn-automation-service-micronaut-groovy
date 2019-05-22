@@ -4,12 +4,14 @@ import codes.recursive.event.BarnEventBus
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider
+import com.oracle.bmc.model.BmcException
 import com.oracle.bmc.streaming.StreamClient
 import com.oracle.bmc.streaming.model.CreateCursorDetails
 import com.oracle.bmc.streaming.model.Message
 import com.oracle.bmc.streaming.requests.CreateCursorRequest
 import com.oracle.bmc.streaming.requests.GetMessagesRequest
 import com.oracle.bmc.streaming.responses.CreateCursorResponse
+import com.oracle.bmc.streaming.responses.GetMessagesResponse
 import groovy.json.JsonException
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
@@ -50,44 +52,60 @@ class CameraConsumerService {
     void start() {
         logger.info("Creating camera cursor...")
 
-        def cursorDetails = CreateCursorDetails.builder()
+        CreateCursorDetails cursorDetails = CreateCursorDetails.builder()
                 .type(CreateCursorDetails.Type.Latest)
                 .partition("0")
                 .build()
-        def cursorRequest = CreateCursorRequest.builder()
+        CreateCursorRequest cursorRequest = CreateCursorRequest.builder()
                 .streamId(streamId)
                 .createCursorDetails(cursorDetails)
                 .build()
 
         CreateCursorResponse cursorResponse = this.client.createCursor(cursorRequest)
         String cursor = cursorResponse.cursor.value
+
         logger.info("Cursor created...")
 
+        int failures = 0
+
         while(!closed.get()) {
-            def getRequest = GetMessagesRequest.builder()
+            GetMessagesRequest getRequest = GetMessagesRequest.builder()
                     .cursor(cursor)
                     .streamId(this.streamId)
                     .build()
-            def getResult = this.client.getMessages(getRequest)
-            getResult.items.each { Message record ->
-                Map msg
-                try {
-                    def slurper = new JsonSlurper()
-                    msg = slurper.parseText( new String(record.value, "UTF-8") ) as Map
-                    logger.info "Received: ${JsonOutput.toJson(msg)}"
-                    BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
-                    barnEventBus.send(sseEvent)
+            GetMessagesResponse getResult
+            try {
+                getResult = this.client.getMessages(getRequest)
+                getResult.items.each { Message record ->
+                    Map msg
+                    try {
+                        def slurper = new JsonSlurper()
+                        msg = slurper.parseText(new String(record.value, "UTF-8")) as Map
+                        logger.info "Received: ${JsonOutput.toJson(msg)}"
+                        BarnSseEvent sseEvent = new BarnSseEvent(msg?.type as String, msg?.data as Map, record.timestamp)
+                        barnEventBus.send(sseEvent)
+                    }
+                    catch (JsonException e) {
+                        logger.warn("Error parsing JSON from ${record.value}")
+                        e.printStackTrace()
+                    }
+                    catch (Exception e) {
+                        logger.warn("Error:")
+                        e.printStackTrace()
+                    }
                 }
-                catch (JsonException e) {
-                    logger.warn("Error parsing JSON from ${record.value}")
-                    e.printStackTrace()
+                cursor = getResult.opcNextCursor
+            }
+            catch(BmcException ex) {
+                failures++
+                if( failures > 9 ) {
+                    throw new Exception("CameraConsumerService has failed ${failures} times.  Giving up...")
                 }
-                catch (Exception e) {
-                    logger.warn("Error:")
-                    e.printStackTrace()
+                else {
+                    logger.info "CameraConsumerService call to getMessages() failed with: '${ex.message}'.  Waiting 1000ms to try again..."
+                    sleep(1000)
                 }
             }
-            cursor = getResult.opcNextCursor
             sleep(500)
         }
 
