@@ -68,36 +68,28 @@ dependencies {
     developmentOnly "io.micronaut:micronaut-runtime-osx"
 }
 
-// uses built-in Copy
-task copyLibs(type: Copy) {
-    from configurations.runtime
-    into 'build/libs/libs'
-}
-
-task copyLocalLibs(type: Copy) {
-    from 'libs/'
-    into 'build/libs/libs'
-}
-
-task copyWallet(type: Copy) {
-    from '../../misc/atp/wallet_BARNEVENTS/'
-    into 'build/wallet'
-}
 task copyResources(type:Copy) {
-    from "build-resource"
-    into "build"
-    doLast {
-        // fix dockerfile/k8s yaml
-        def d = new File( 'build/Dockerfile' )
-        def dfile = d.text.replaceAll('\\$\\{project.artifactId\\}', project.name)
-        dfile = dfile.replaceAll("COPY ${project.name}", "COPY libs/${project.name}")
-        d.write(dfile)
+    destinationDir project.buildDir
+    from('build-resource') {}
+    
+    filesMatching([ '**/Dockerfile', '**/app.yaml' ] ) {
+        expand(
+                [
+                        project_artifactId: project.name
+                ]
+        )
+    }
 
-        def a = new File( 'build/app.yaml' )
-        def afile = a.text.replaceAll('\\$\\{project.artifactId\\}', project.name)
-        a.write(afile)
+    from('../../misc/atp/wallet_BARNEVENTS/') {
+        into 'wallet'
+    }
 
-        def allJar = new File( 'build/barn-automation-service-micronaut-groovy-0.1-all.jar')
+    from('libs') {
+        into 'libs/libs'
+    }
+
+    from( configurations.runtime ) {
+        into 'libs/libs'
     }
 }
 
@@ -134,7 +126,4 @@ clean {
     delete 'build/wallet', 'build/classes', 'build/distributions', 'build/libs', 'build/resources', 'build/scripts', 'build/scriptsShadow', 'build/tmp', 'build/app.yaml', 'build/Dockerfile', 'build/secret.yaml'
 }
 
-assemble.dependsOn copyLibs
-assemble.dependsOn copyLocalLibs
-assemble.dependsOn copyWallet
 assemble.dependsOn copyResources
