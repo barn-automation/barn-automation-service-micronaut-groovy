@@ -1,6 +1,6 @@
 package codes.recursive.controller
 
-import codes.recursive.event.BarnEventBus
+import codes.recursive.event.EventPublisher
 import codes.recursive.event.InitialEventState
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
@@ -31,13 +31,17 @@ class BarnController {
 
     OracleDataService oracleDataService
     MessageProducerService messageProducerService
-    BarnEventBus barnEventBus
+    EventPublisher eventPublisher
 
     @Inject
-    BarnController(OracleDataService oracleDataService, MessageProducerService messageProducerService, BarnEventBus barnEventBus){
+    BarnController(
+            OracleDataService oracleDataService,
+            MessageProducerService messageProducerService,
+            EventPublisher eventPublisher
+    ){
         this.oracleDataService = oracleDataService
         this.messageProducerService = messageProducerService
-        this.barnEventBus = barnEventBus
+        this.eventPublisher = eventPublisher
     }
 
     @Get("/")
@@ -106,11 +110,10 @@ class BarnController {
     Publisher<Event<BarnSseEvent>> stream() {
         InitialEventState initialEventState = new InitialEventState()
         final AtomicBoolean hasListener = new AtomicBoolean(false)
-        Disposable eventBusSubscription
-        BiConsumer sseGenerator = { BarnSseEvent i, Emitter sseEmitter ->
+        Disposable subscription
+        BiConsumer sseGenerator = { BarnSseEvent sseEvent, Emitter sseEmitter ->
             if( !hasListener.get() ) {
-                eventBusSubscription = barnEventBus
-                    .toObservable()
+                subscription = eventPublisher.publishSubject
                     .subscribe( new Consumer<Object>() {
                         @Override
                         void accept(Object o) throws Exception, IllegalStateException {
@@ -121,12 +124,12 @@ class BarnController {
                                     }
                                     else {
                                         sseEmitter.onComplete()
-                                        eventBusSubscription.dispose()
+                                        subscription.dispose()
                                     }
                                 }
                                 catch(IllegalStateException ex) {
                                     sseEmitter.onComplete()
-                                    eventBusSubscription.dispose()
+                                    subscription.dispose()
                                 }
                             }
                         }

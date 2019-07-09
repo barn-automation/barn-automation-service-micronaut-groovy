@@ -1,6 +1,6 @@
 package codes.recursive.service.streaming
 
-import codes.recursive.event.BarnEventBus
+import codes.recursive.event.EventPublisher
 import codes.recursive.model.BarnEvent
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
@@ -37,17 +37,17 @@ class MessageConsumerService {
     String groupName = 'group-0'
     StreamClient client
     OracleDataService oracleDataService
-    BarnEventBus barnEventBus
+    EventPublisher eventPublisher
 
     @Inject
     MessageConsumerService(
             OracleDataService oracleDataService,
-            BarnEventBus barnEventBus,
+            EventPublisher eventPublisher,
             @Property(name="codes.recursive.oracle.oci-config-path") String configFilePath,
             @Property(name="codes.recursive.oracle.streaming.outgoing-stream-id") String streamId
     ) {
         this.oracleDataService = oracleDataService
-        this.barnEventBus = barnEventBus
+        this.eventPublisher = eventPublisher
         this.configFilePath = configFilePath
         this.streamId = streamId
         ConfigFileAuthenticationDetailsProvider provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
@@ -95,7 +95,7 @@ class MessageConsumerService {
                         BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
                         BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
                         if( evt.type != ArduinoMessage.CAMERA_0 ) {
-                            barnEventBus.send(sseEvent)
+                            eventPublisher.publishSubject.onNext(sseEvent)
                         }
                         oracleDataService.save(evt)
                     }

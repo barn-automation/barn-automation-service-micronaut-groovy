@@ -1,6 +1,6 @@
 package codes.recursive.service.streaming
 
-import codes.recursive.event.BarnEventBus
+import codes.recursive.event.EventPublisher
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider
@@ -34,13 +34,17 @@ class CameraConsumerService {
     StreamClient client
     private final AtomicBoolean closed = new AtomicBoolean(false)
 
-    @Inject private OracleDataService oracleDataService
-    @Inject BarnEventBus barnEventBus
+    OracleDataService oracleDataService
+    EventPublisher eventPublisher
 
     CameraConsumerService(
+            OracleDataService oracleDataService,
+            EventPublisher eventPublisher,
             @Property(name="codes.recursive.oracle.oci-config-path") String configFilePath,
             @Property(name="codes.recursive.oracle.streaming.camera-stream-id") String streamId
     ) {
+        this.oracleDataService = oracleDataService
+        this.eventPublisher = eventPublisher
         this.configFilePath = configFilePath
         this.streamId = streamId
         ConfigFileAuthenticationDetailsProvider provider =  new ConfigFileAuthenticationDetailsProvider(this.configFilePath, 'DEFAULT')
@@ -83,7 +87,7 @@ class CameraConsumerService {
                         msg = slurper.parseText(new String(record.value, "UTF-8")) as Map
                         logger.info "Received: ${JsonOutput.toJson(msg)}"
                         BarnSseEvent sseEvent = new BarnSseEvent(msg?.type as String, msg?.data as Map, record.timestamp)
-                        barnEventBus.send(sseEvent)
+                        eventPublisher.publishSubject.onNext(sseEvent)
                     }
                     catch (JsonException e) {
                         logger.warn("Error parsing JSON from ${record.value}")
