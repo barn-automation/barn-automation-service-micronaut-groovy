@@ -1,7 +1,6 @@
 package codes.recursive.controller
 
 import codes.recursive.event.EventPublisher
-import codes.recursive.event.InitialEventState
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import codes.recursive.service.streaming.MessageProducerService
@@ -12,18 +11,12 @@ import groovy.transform.TypeCheckingMode
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.sse.Event
-import io.reactivex.Emitter
-import io.reactivex.Flowable
-import io.reactivex.disposables.Disposable
-import io.reactivex.functions.BiConsumer
-import io.reactivex.functions.Consumer
+import io.reactivex.BackpressureStrategy
 import org.reactivestreams.Publisher
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 import javax.inject.Inject
-import java.util.concurrent.Callable
-import java.util.concurrent.atomic.AtomicBoolean
 
 @CompileStatic(TypeCheckingMode.SKIP)
 @Controller("/barn")
@@ -109,35 +102,8 @@ class BarnController {
 
     @Get("/stream")
     Publisher<Event<BarnSseEvent>> stream() {
-        final AtomicBoolean isSubscribed = new AtomicBoolean(false)
-        Disposable subscription
-
-        logger.info("oh, hello new client! let us provide you with some data!")
-
-        return Flowable.generate( new InitialEventState() as Callable, ( (sseEvent, sseEmitter) -> {
-            logger.info("the consumer has been called.")
-            if( !isSubscribed.get() ) {
-                logger.info("subscribe to the eventPublisher")
-                subscription = eventPublisher.publishSubject
-                    .doOnError( err -> {
-                        logger.info("something bad happened. clean up and get out of here!")
-                        sseEmitter.onComplete()
-                        subscription.dispose()
-                    })
-                    .subscribe ( o -> {
-                        logger.info("eventPublisher has received something, pass it along to the client if they are still connected -->")
-                        if ( !sseEmitter.cancelled ) {
-                            sseEmitter.onNext ( Event .of ( o ) )
-                        }
-                        else {
-                            logger.info("oh no! the client has disconnected, let's clean things up...")
-                            sseEmitter.onComplete ( )
-                            subscription.dispose()
-
-                        }
-                    });
-                isSubscribed.set(true)
-            }
-        }) as BiConsumer );
+        return eventPublisher.publishSubject
+                .map( evt -> Event.of(evt) )
+                .toFlowable(BackpressureStrategy.LATEST)
     }
 }
