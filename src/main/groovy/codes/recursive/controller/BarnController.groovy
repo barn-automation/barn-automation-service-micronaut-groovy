@@ -22,6 +22,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 import javax.inject.Inject
+import java.util.concurrent.Callable
 import java.util.concurrent.atomic.AtomicBoolean
 
 @CompileStatic(TypeCheckingMode.SKIP)
@@ -108,35 +109,35 @@ class BarnController {
 
     @Get("/stream")
     Publisher<Event<BarnSseEvent>> stream() {
-        InitialEventState initialEventState = new InitialEventState()
-        final AtomicBoolean hasListener = new AtomicBoolean(false)
+        final AtomicBoolean isSubscribed = new AtomicBoolean(false)
         Disposable subscription
-        BiConsumer sseGenerator = { BarnSseEvent sseEvent, Emitter sseEmitter ->
-            if( !hasListener.get() ) {
+
+        logger.info("oh, hello new client! let us provide you with some data!")
+
+        return Flowable.generate( new InitialEventState() as Callable, ( (sseEvent, sseEmitter) -> {
+            logger.info("the consumer has been called.")
+            if( !isSubscribed.get() ) {
+                logger.info("subscribe to the eventPublisher")
                 subscription = eventPublisher.publishSubject
-                    .subscribe( new Consumer<Object>() {
-                        @Override
-                        void accept(Object o) throws Exception, IllegalStateException {
-                            if( o instanceof BarnSseEvent ) {
-                                try {
-                                    if( !sseEmitter.cancelled ) {
-                                        sseEmitter.onNext( Event.of(o) )
-                                    }
-                                    else {
-                                        sseEmitter.onComplete()
-                                        subscription.dispose()
-                                    }
-                                }
-                                catch(IllegalStateException ex) {
-                                    sseEmitter.onComplete()
-                                    subscription.dispose()
-                                }
-                            }
-                        }
+                    .doOnError( err -> {
+                        logger.info("something bad happened. clean up and get out of here!")
+                        sseEmitter.onComplete()
+                        subscription.dispose()
                     })
-                hasListener.set(true)
+                    .subscribe ( o -> {
+                        logger.info("eventPublisher has received something, pass it along to the client if they are still connected -->")
+                        if ( !sseEmitter.cancelled ) {
+                            sseEmitter.onNext ( Event .of ( o ) )
+                        }
+                        else {
+                            logger.info("oh no! the client has disconnected, let's clean things up...")
+                            sseEmitter.onComplete ( )
+                            subscription.dispose()
+
+                        }
+                    });
+                isSubscribed.set(true)
             }
-        } as BiConsumer
-        return Flowable.generate( initialEventState, sseGenerator )
+        }) as BiConsumer );
     }
 }
