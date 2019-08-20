@@ -92,7 +92,7 @@ class MessageConsumerService {
                         JsonSlurper slurper = new JsonSlurper()
                         msg = slurper.parseText( new String(record.value, "UTF-8") ) as Map
                         logger.info "Received: ${JsonOutput.toJson(msg)}"
-                        BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), record.timestamp )
+                        BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), 'micronaut-groovy', record.timestamp )
                         BarnSseEvent sseEvent = new BarnSseEvent( msg?.type as String, msg?.data as Map, record.timestamp )
                         if( evt.type != ArduinoMessage.CAMERA_0 ) {
                             eventPublisher.publishSubject.onNext(sseEvent)

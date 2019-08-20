@@ -49,10 +49,10 @@ class OracleDataService {
 
     def save(BarnEvent barnEvent) {
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-        List<Object> params = [barnEvent.type, barnEvent.data, simpleDateFormat.format(barnEvent.capturedAt)] as List<Object>
+        List<Object> params = [barnEvent.type, barnEvent.data, barnEvent.source, simpleDateFormat.format(barnEvent.capturedAt)] as List<Object>
         Sql connection = Sql.newInstance( this.dataSource )
         connection.execute("""
-          insert into BARN.BARN_EVENT (TYPE, DATA, CAPTURED_AT) values (?, ?, to_timestamp(?, 'yyyy-mm-dd HH24:mi:ss'))
+          insert into BARN.BARN_EVENT (TYPE, DATA, SOURCE, CAPTURED_AT) values (?, ?, ?, to_timestamp(?, 'yyyy-mm-dd HH24:mi:ss'))
         """, params)
         connection.close()
     }
@@ -82,10 +82,11 @@ class OracleDataService {
     List listEvents(int offset=0, int max=50) {
         List events = []
         JsonSlurper slurper = new JsonSlurper()
-        defaultConnection.eachRow("select * from BARN_EVENT", offset, max) {
+        defaultConnection.eachRow("select * from BARN_EVENT ORDER BY CAPTURED_AT desc", offset, max) {
             events << [
                     id: it['ID'],
                     type: it['TYPE'],
+                    source: it['SOURCE'],
                     capturedAt: (it['CAPTURED_AT'] as TIMESTAMP).stringValue(),
                     data:  slurper.parseText((it['DATA'] as Clob)?.asciiStream?.text),
             ]

@@ -1,6 +1,7 @@
 package codes.recursive.service.streaming
 
 import codes.recursive.event.EventPublisher
+import codes.recursive.model.BarnEvent
 import codes.recursive.model.BarnSseEvent
 import codes.recursive.service.data.OracleDataService
 import com.oracle.bmc.auth.ConfigFileAuthenticationDetailsProvider
@@ -86,8 +87,10 @@ class CameraConsumerService {
                         def slurper = new JsonSlurper()
                         msg = slurper.parseText(new String(record.value, "UTF-8")) as Map
                         logger.info "Received: ${JsonOutput.toJson(msg)}"
+                        BarnEvent evt = new BarnEvent( msg?.type as String, JsonOutput.toJson(msg?.data), 'micronaut-groovy', record.timestamp )
                         BarnSseEvent sseEvent = new BarnSseEvent(msg?.type as String, msg?.data as Map, record.timestamp)
                         eventPublisher.publishSubject.onNext(sseEvent)
+                        oracleDataService.save(evt)
                     }
                     catch (JsonException e) {
                         logger.warn("Error parsing JSON from ${record.value}")

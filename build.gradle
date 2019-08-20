@@ -73,11 +73,13 @@ task copyResources(type:Copy) {
     from('build-resource') {}
     
     filesMatching([ '**/Dockerfile', '**/app.yaml' ] ) {
+        /*
         expand(
                 [
                         project_artifactId: project.name
                 ]
         )
+        */
     }
 
     from('../../misc/atp/wallet_BARNEVENTS/') {
@@ -123,7 +125,7 @@ jar {
 clean {
     // don't delete .oci dir
     delete = [] //clear out existing files to delete
-    delete 'build/wallet', 'build/classes', 'build/distributions', 'build/libs', 'build/resources', 'build/scripts', 'build/scriptsShadow', 'build/tmp', 'build/app.yaml', 'build/Dockerfile', 'build/secret.yaml'
+    delete 'build/wallet', 'build/classes', 'build/distributions', 'build/libs', 'build/resources', 'build/scripts', 'build/scriptsShadow', 'build/tmp', 'build/secret.yaml'
 }
 
 assemble.dependsOn copyResources
